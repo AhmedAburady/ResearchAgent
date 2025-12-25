@@ -4,7 +4,9 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langchain.chat_models import init_chat_model
 from typing_extensions import TypedDict
-from web_operations import serp_search, reddit_search_api
+from web_operations import serp_search, reddit_search_api, reddit_post_retrieval
+from pydantic import BaseModel, Field
+from prompts import get_google_analysis_messages, get_bing_analysis_messages, get_reddit_analysis_messages, get_synthesis_messages, get_reddit_url_analysis_messages
 
 load_dotenv()
 
@@ -23,6 +25,9 @@ class State(TypedDict):
     reddit_analysis: str | None
     final_answer: str | None
 
+
+class RedditURLAnalysis(BaseModel):
+    selected_urls: list[str] = Field(description="List of Reddit URLs that contains valuable informations for answering the user's question")
 
 def google_search(state: State):
     user_question = state.get("user_question", "")
@@ -44,28 +49,91 @@ def reddit_search(state: State):
     print(f"Searching Reddit for: {user_question}")
 
     reddit_results = reddit_search_api(user_question)
-    print(f"Reddit results: {reddit_results}")
 
     return {"reddit_results": reddit_results}
 
 def analyze_reddit_posts(state: State):
+    user_question = state.get("user_question", "")
+    reddit_results = state.get("reddit_results", "")
     
-    return {"selected_reddit_urls": []}
+    if not reddit_results:
+        return {"selected_reddit_urls": []}
+    
+    structured_llm = llm.with_structured_output(RedditURLAnalysis)
+    messages = get_reddit_url_analysis_messages(user_question, reddit_results)
+
+    try:
+        analysis = structured_llm.invoke(messages)
+        selected_urls = analysis.selected_urls
+
+        for i, url in enumerate(selected_urls, 1):
+            print(f"  {i}. {url}")
+    except Exception as e:
+        print(f"Error analyzing Reddit posts: {e}")
+        selected_urls = []
+    
+    return {"selected_reddit_urls": selected_urls}
 
 def retrieve_reddit_posts(state: State):
-    return {"reddit_post_data": []}
+    print("Retrieving Reddit post comments...")
+
+    selected_urls = state.get("selected_reddit_urls", [])
+
+    if not selected_urls:
+        return {"reddit_post_data": []}
+
+    print(f"Processing {len(selected_urls)} Reddit URLs")
+
+    reddit_post_data = reddit_post_retrieval(selected_urls)
+
+    if reddit_post_data:
+        print(f"Successfully retrieved {len(reddit_post_data)} Reddit post comments")
+        print(f"comments: {reddit_post_data['comments']}")
+    else:
+        print("Failed to retrieve Reddit post comments")
+        reddit_post_data = []
+    
+    return {"reddit_post_data": reddit_post_data}
 
 def analyze_google_results(state: State):
-    return {"google_analysis": ""}
+    print("Analyzing Google results...")
+    user_question = state.get("user_question", "")
+    google_results = state.get("google_results", "")
+    messages = get_google_analysis_messages(user_question, google_results)
+    reply = llm.invoke(messages)
+    
+    return {"google_analysis": reply.content}
 
 def analyze_bing_results(state: State):
-    return {"bing_analysis": ""}
+    print("Analyzing Bing results...")
+    user_question = state.get("user_question", "")
+    bing_results = state.get("bing_results", "")
+    messages = get_bing_analysis_messages(user_question, bing_results)
+    reply = llm.invoke(messages)
+    
+    return {"bing_analysis": reply.content}
 
 def analyze_reddit_results(state: State):
-    return {"reddit_analysis": ""}
+    print("Analyzing Reddit results...")
+    user_question = state.get("user_question", "")
+    reddit_results = state.get("reddit_results", "")
+    reddit_post_data = state.get("reddit_post_data", "")
+    messages = get_reddit_analysis_messages(user_question, reddit_results, reddit_post_data)
+    reply = llm.invoke(messages)
+    
+    return {"reddit_analysis": reply.content}
 
 def synthesize_analysis(state: State):
-    return {"final_answer": ""}
+    print("Final Synthesizing analysis...")
+
+    user_question = state.get("user_question", "")
+    google_analysis = state.get("google_analysis", "")
+    bing_analysis = state.get("bing_analysis", "")
+    reddit_analysis = state.get("reddit_analysis", "")
+    messages = get_synthesis_messages(user_question, google_analysis, bing_analysis, reddit_analysis)
+    reply = llm.invoke(messages)
+    final_answer = reply.content
+    return {"final_answer": final_answer, "messages": [{"role": "assistant", "content": final_answer}]}
 
 graph_builder = StateGraph(State)
 graph_builder.add_node("google_search", google_search)
