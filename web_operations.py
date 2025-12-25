@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 import os
 import requests
+from datetime import date
 from urllib.parse import quote_plus
 from snapshot_operations import poll_snapshot_status, download_snapshot
 
@@ -12,7 +13,7 @@ def _make_api_request(url, **kwargs):
     
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "content-type": "application/json"
+        "Content-Type": "application/json"
     }
     
     try:
@@ -71,7 +72,7 @@ def _trigger_and_download_snapshot(trigger_url, params, data, operation_name="op
     return raw_data
     
 
-def reddit_search(keyword, data="All Time", sort_by="Hot", num_of_posts=75):
+def reddit_search_api(keyword, date="All time", sort_by="Hot", num_of_posts=75):
     trigger_url = "https://api.brightdata.com/datasets/v3/trigger"
 
     params ={
@@ -102,4 +103,4 @@ def reddit_search(keyword, data="All Time", sort_by="Hot", num_of_posts=75):
             "url": post.get("url")
         }
         parsed_data.append(parsed_post)
-    return parsed_data
+    return {"parsed_posts": parsed_data, "total_found": len(parsed_data)}

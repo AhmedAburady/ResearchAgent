@@ -4,7 +4,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langchain.chat_models import init_chat_model
 from typing_extensions import TypedDict
-from web_operations import serp_search
+from web_operations import serp_search, reddit_search_api
 
 load_dotenv()
 
@@ -43,7 +43,8 @@ def reddit_search(state: State):
     user_question = state.get("user_question", "")
     print(f"Searching Reddit for: {user_question}")
 
-    reddit_results = []
+    reddit_results = reddit_search_api(user_question)
+    print(f"Reddit results: {reddit_results}")
 
     return {"reddit_results": reddit_results}
 
